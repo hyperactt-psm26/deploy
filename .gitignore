@@ -1,0 +1,14 @@
+# Real secrets/config for this deployment - never commit
+.env
+
+# Vault runtime state and key material - copy these to the droplet out-of-band (scp),
+# never through git
+vault/data/
+vault/logs/
+vault/tls/
+vault/secret/
+vault/dev-certs/
+vault/config/agent-token
+
+# Docker volumes if ever bind-mounted here
+postgres-data/

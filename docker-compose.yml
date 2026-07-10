@@ -1,0 +1,319 @@
+networks:
+  adampsm_net:
+    driver: bridge
+  fabric_test:
+    external: true
+
+volumes:
+  postgres_data:
+  kafka_data:
+  redis_data:
+  vault_data:
+  caddy_data:
+  caddy_config:
+  hactt_frontend_node_modules:
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    mem_limit: 100m
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      SAGILE_DOMAIN: ${SAGILE_DOMAIN}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - adampsm_net
+    depends_on:
+      - kong-gateway
+      - hactt-frontend
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    restart: unless-stopped
+    mem_limit: 300m
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: hactt
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - adampsm_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d hactt"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    restart: unless-stopped
+    mem_limit: 800m
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      CLUSTER_ID: "L1Q3OEVBNTcwNTJENDM2Qk"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 12
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - adampsm_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    mem_limit: 150m
+    command: redis-server --appendonly yes --maxmemory 100mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - adampsm_net
+
+  vault:
+    image: hashicorp/vault:latest
+    container_name: vault
+    restart: unless-stopped
+    mem_limit: 150m
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_ADDR: "https://127.0.0.1:8200"
+      VAULT_CACERT: "/vault/tls/vault.crt"
+    volumes:
+      - ./vault/config:/vault/config:ro
+      - vault_data:/vault/data
+      - ./vault/logs:/vault/logs
+      - ./vault/tls:/vault/tls:ro
+    command: vault server -config=/vault/config/vault.hcl
+    networks:
+      - adampsm_net
+    healthcheck:
+      test: ["CMD-SHELL", "VAULT_CACERT=/vault/tls/vault.crt vault status || [ $$? -eq 2 ]"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  vault-agent-identity:
+    image: hashicorp/vault:latest
+    container_name: vault-agent-identity
+    restart: unless-stopped
+    mem_limit: 80m
+    depends_on:
+      vault:
+        condition: service_healthy
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - ./vault/agent:/vault/config/agent:ro
+      - ./vault/config/agent-token:/vault/config/agent-token:ro
+      - ./vault/tls:/vault/tls:ro
+      - ./vault/dev-certs/identity:/vault/rendered
+      - ./vault/secret:/vault/secret
+    command: vault agent -config=/vault/config/agent/identity.hcl
+    networks:
+      - adampsm_net
+
+  kong-gateway:
+    image: kong:3.6.0-ubuntu
+    container_name: kong-gateway
+    restart: unless-stopped
+    mem_limit: 350m
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      KONG_DATABASE: "postgres"
+      KONG_PG_HOST: "postgres"
+      KONG_PG_PORT: "5432"
+      KONG_PG_USER: "kong"
+      KONG_PG_PASSWORD: "kong"
+      KONG_PG_DATABASE: "kong"
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PROXY_ACCESS_LOG: "/dev/stdout"
+      KONG_ADMIN_ACCESS_LOG: "/dev/stdout"
+      KONG_PROXY_ERROR_LOG: "/dev/stderr"
+      KONG_ADMIN_ERROR_LOG: "/dev/stderr"
+    ports:
+      # Admin API bound to loopback only, for one-off setup via an SSH tunnel -
+      # never published on the public interface.
+      - "127.0.0.1:8001:8001"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    networks:
+      - adampsm_net
+
+  hactt-frontend:
+    build:
+      context: ../hactt-frontend
+      dockerfile: Dockerfile.dev
+    container_name: hactt-frontend
+    restart: unless-stopped
+    mem_limit: 300m
+    environment:
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
+      API_BASE_URL: "http://hactt-backend:8090"
+      BLOCKCHAIN_API_URL: "http://blockchain-service:3005"
+      LOGGING_URL: "http://logging_services:8092"
+      SAGILE_CLIENT_ID: ${SAGILE_CLIENT_ID}
+      SAGILE_CLIENT_SECRET: ${SAGILE_CLIENT_SECRET}
+      REDIRECT_URI: "https://${DOMAIN}/api/auth/callback"
+      SAGILE_LOGIN_URL: "https://${SAGILE_DOMAIN}/login"
+      SAGILE_AUTH_URL: "https://${SAGILE_DOMAIN}/oauth/authorize"
+      SAGILE_TOKEN_URL: "http://host.docker.internal:8001/oauth/token"
+      VITE_LOGOUT_URL: "https://${SAGILE_DOMAIN}/logout"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../hactt-frontend:/app:cached
+      - hactt_frontend_node_modules:/app/node_modules
+    networks:
+      - adampsm_net
+
+  hactt-backend:
+    build:
+      context: ../hactt-backend
+    container_name: hactt-backend
+    restart: unless-stopped
+    mem_limit: 450m
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/hactt"
+      db_user: admin
+      db_password: admin123
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      CLOUD_AWS_S3_ENDPOINT: "http://localhost:9000"
+      SAGILE_API_URL: "http://host.docker.internal:8001"
+      IDENTITY_SERVICE_URL: "http://identity-service:3002"
+      VAULT_ADDRESS: "https://vault:8200"
+      VAULT_TOKEN_PATH: "/vault-secrets/agent-token"
+      VAULT_CA_CERT_PATH: "/vault-secrets/vault.crt"
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./vault/config/agent-token:/vault-secrets/agent-token:ro
+      - ./vault/tls/vault.crt:/vault-secrets/vault.crt:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+    networks:
+      - adampsm_net
+
+  logging_services:
+    build:
+      context: ../logging_services
+    container_name: logging-services
+    restart: unless-stopped
+    mem_limit: 450m
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/hactt_logs"
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin123
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - adampsm_net
+
+  notification-services:
+    build:
+      context: ../notification-services
+    container_name: notification-services
+    restart: unless-stopped
+    mem_limit: 350m
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx192m"
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      SPRING_MAIL_HOST: ${SMTP_HOST}
+      SPRING_MAIL_PORT: ${SMTP_PORT}
+      SPRING_MAIL_USERNAME: ${SMTP_USERNAME}
+      SPRING_MAIL_PASSWORD: ${SMTP_PASSWORD}
+    networks:
+      - adampsm_net
+
+  identity-service:
+    build:
+      context: ../blockchain/fabric-identity-service
+      target: development
+    container_name: identity-service
+    restart: unless-stopped
+    mem_limit: 200m
+    environment:
+      PORT: "3002"
+      CA_URL: "https://ca_hactt:7054"
+      CA_NAME: "ca-hactt"
+      CA_TLS_CERT_PATH: "/app/certs/ca-hactt-cert.pem"
+      CA_TLS_VERIFY: "true"
+      MSP_ID: "HACTTMSP"
+      CA_ADMIN_ENROLLMENT_ID: admin
+      CA_ADMIN_ENROLLMENT_SECRET: adminpw
+      DEFAULT_AFFILIATION: "org1.department1"
+      CUSTOM_ATTR_PREFIX: "hactt"
+      WALLET_PATH: "/app/wallet"
+      KAFKA_BROKERS: "kafka:29092"
+      KAFKA_CLIENT_ID: "identity-service-client"
+      KAFKA_GROUP_ID: "ca-identity-group"
+      KAFKA_TOPIC: "identity-events"
+    volumes:
+      - ../blockchain/fabric-identity-service/src:/app/src
+      - ../blockchain/fabric-identity-service/wallet:/app/wallet
+      - ../blockchain/fabric-identity-service/certs:/app/certs:ro
+    networks:
+      - adampsm_net
+      - fabric_test
+
+  blockchain-service:
+    build:
+      context: ../blockchain/blockchain-service
+      target: production
+    container_name: blockchain-service
+    restart: unless-stopped
+    mem_limit: 200m
+    environment:
+      PORT: "3005"
+      PEER_ENDPOINT: "peer0.hactt.tech:7051"
+      PEER_HOST_ALIAS: "peer0.hactt.tech"
+      TLS_CERT_PATH: "/hactt-network/organizations/peerOrganizations/hactt.tech/peers/peer0.hactt.tech/tls/ca.crt"
+      CERT_PATH: "/hactt-network/organizations/peerOrganizations/hactt.tech/users/Admin@hactt.tech/msp/signcerts/cert.pem"
+      PRIVATE_KEY_DIR: "/hactt-network/organizations/peerOrganizations/hactt.tech/users/Admin@hactt.tech/msp/keystore"
+      CHANNEL_NAME: "mychannel"
+      CHAINCODE_NAME: "hactt"
+      MSP_ID: "HACTTMSP"
+      SPRING_BASE_URL: "http://hactt-backend:8090"
+    volumes:
+      - ../blockchain/hactt-network/organizations:/hactt-network/organizations:ro
+    networks:
+      - adampsm_net
+      - fabric_test

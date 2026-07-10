@@ -1,0 +1,105 @@
+server:
+  port: 8090
+  address: 0.0.0.0
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: hactt-backend
+
+  cloud:
+    aws:
+      s3:
+        bucket: "hactt-dev-bucket"
+        endpoint: ${CLOUD_AWS_S3_ENDPOINT:http://localhost:9000}
+        region: us-east-1
+      credentials:
+        access-key: ${CLOUD_AWS_S3_ACCESS_KEY:rustfsadmin}
+        secret-key: ${CLOUD_AWS_S3_SECRET_KEY:rustfsadmin}
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/hactt}
+    username: ${db_user}
+    password: ${db_password}
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # Batches lazy-collection/association loads (e.g. owners/tags per row on paginated list
+        # endpoints) into WHERE id IN (...) queries instead of one query per row (N+1).
+        default_batch_fetch_size: 25
+      org:
+        hibernate:
+          envers:
+            audit_table_suffix: _aud
+            revision_field_name: rev
+            revision_type_field_name: rev_type
+            store_data_at_delete: true
+            default_schema: public
+
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    # Consumer is configured explicitly in KafkaConfig.consumerFactory().
+    properties:
+      reconnect.backoff.ms: 1000
+      reconnect.backoff.max.ms: 10000
+
+deepseek:
+  api:
+    key: ${DEEPSEEK_API_KEY}
+
+sagile:
+  api:
+    url: ${SAGILE_API_URL:http://127.0.0.1:8001}
+  service:
+    token: ${SAGILE_SERVICE_TOKEN:local-dev-shared-secret}
+
+identity:
+  service:
+    url: ${IDENTITY_SERVICE_URL:http://localhost:3002}
+    token: ${IDENTITY_SERVICE_TOKEN:dev-internal-token}
+
+# Vault is still required at runtime (VaultConfig -> VaultTemplate) for the JWT
+# signing key and Fabric wallet certificates (see auth.service.JwtSigningKeyProvider
+# and WalletCertificateService) even though the inbound mTLS listener above has been
+# removed. token-path/ca-cert-path are mounted into the container from the shared
+# vault/config/agent-token and vault/tls/vault.crt files rather than a per-service
+# vault-agent sidecar.
+vault:
+  address: ${VAULT_ADDRESS:https://localhost:8200}
+  token-path: ${VAULT_TOKEN_PATH:/home/adam/Desktop/psm/vault/config/agent-token}
+  ca-cert-path: ${VAULT_CA_CERT_PATH:/home/adam/Desktop/psm/vault/tls/vault.crt}
+  kv-mount: hactt-secret
+
+app:
+  outbox:
+    poll-interval-ms: 5000
+  attachments:
+    max-file-size: 26214400 # 25MB
+    
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: mappings
+
+logging:
+  level:
+    org.apache.kafka.clients.Metadata: ERROR
+    org.apache.kafka.clients.NetworkClient: ERROR

@@ -1,0 +1,12 @@
+{$DOMAIN} {
+	handle /api/* {
+		reverse_proxy kong-gateway:8000
+	}
+	handle {
+		reverse_proxy hactt-frontend:3000
+	}
+}
+
+{$SAGILE_DOMAIN} {
+	reverse_proxy host.docker.internal:8001
+}

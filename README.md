@@ -1,4 +1,4 @@
-# adampsm-deploy
+# deploy (hyperactt-psm26/deploy)
 
 Master compose stack for the adamPSM app + shared infra (Postgres, Kafka, Redis, Kong,
 Vault, Caddy). Expected to sit as a sibling folder to `hactt-backend`, `hactt-frontend`,
@@ -10,17 +10,22 @@ Vault, Caddy). Expected to sit as a sibling folder to `hactt-backend`, `hactt-fr
   hactt-frontend/
   logging_services/
   notification-services/
+  SAgileHyperagile/
   blockchain/
     blockchain-service/
     fabric-identity-service/
     hactt-network/
     hactt-chaincode/
     scripts/
-  adampsm-deploy/   <- this repo
+  deploy/   <- this repo
 ```
 
-See the deployment plan for the full step-by-step. Quick reference for the pieces that
-live only in this repo:
+Run `bootstrap-droplet.sh` (with `GITHUB_PAT` set) on a fresh droplet to install
+Docker, add a swapfile, lock down the firewall, and clone every repo above into the
+right place with the right folder names (several of the GitHub repo names don't match
+the local folder names the compose file expects — the script handles the renames).
+
+Quick reference for the pieces that live only in this repo:
 
 ## Secrets that must exist before `docker compose up` (never committed to git)
 

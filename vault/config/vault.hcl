@@ -1,6 +1,6 @@
 # config/vault.hcl
 ui = true
-disable_mlock = false
+disable_mlock = true
 log_level = "warn"
 log_format = "json"
 

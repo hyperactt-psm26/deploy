@@ -206,6 +206,7 @@ services:
       SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/hactt"
       db_user: admin
       db_password: admin123
+      sagile_public_key: ${SAGILE_PUBLIC_KEY}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
       CLOUD_AWS_S3_ENDPOINT: "http://localhost:9000"
       SAGILE_API_URL: "http://host.docker.internal:8001"

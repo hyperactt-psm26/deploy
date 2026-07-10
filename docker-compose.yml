@@ -160,7 +160,7 @@ services:
     ports:
       # Admin API bound to loopback only, for one-off setup via an SSH tunnel -
       # never published on the public interface.
-      - "127.0.0.1:8001:8001"
+      - "127.0.0.1:18001:8001"
     ulimits:
       nofile:
         soft: 65536

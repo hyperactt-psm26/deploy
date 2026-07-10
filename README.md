@@ -66,12 +66,13 @@ docker compose exec kong-gateway kong migrations bootstrap
 docker compose restart kong-gateway
 ```
 
-Kong's admin API is bound to `127.0.0.1:8001` only (not public) — reach it via an SSH
-tunnel: `ssh -L 8001:127.0.0.1:8001 user@droplet-ip`, then from your local machine:
+Kong's admin API is bound to `127.0.0.1:18001` only (not public, and not 8001 -
+SAgileHyperagile's own app already uses host port 8001). Reach it via an SSH tunnel:
+`ssh -L 18001:127.0.0.1:18001 user@droplet-ip`, then from your local machine:
 
 ```
-curl -i -X POST http://localhost:8001/services --data name=hactt-backend --data url=http://hactt-backend:8090
-curl -i -X POST http://localhost:8001/services/hactt-backend/routes --data 'paths[]=/api' --data strip_path=true
+curl -i -X POST http://localhost:18001/services --data name=hactt-backend --data url=http://hactt-backend:8090
+curl -i -X POST http://localhost:18001/services/hactt-backend/routes --data 'paths[]=/api' --data strip_path=true
 ```
 
 Add further services/routes the same way for `blockchain-service` etc. once you know

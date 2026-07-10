@@ -20,10 +20,28 @@ Vault, Caddy). Expected to sit as a sibling folder to `hactt-backend`, `hactt-fr
   deploy/   <- this repo
 ```
 
-Run `bootstrap-droplet.sh` (with `GITHUB_PAT` set) on a fresh droplet to install
-Docker, add a swapfile, lock down the firewall, and clone every repo above into the
-right place with the right folder names (several of the GitHub repo names don't match
-the local folder names the compose file expects — the script handles the renames).
+Before running the script, add the droplet's SSH key to the `hyperactt` GitHub account
+(that account already has access to every repo in the org, so this one key is all you
+need — no per-repo deploy keys):
+
+```
+ssh-keygen -t ed25519 -C "adampsm-droplet" -f ~/.ssh/id_ed25519_deploy -N ""
+cat ~/.ssh/id_ed25519_deploy.pub   # add this under github.com -> Settings -> SSH and GPG keys, on the hyperactt account
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/id_ed25519_deploy
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+ssh -T git@github.com   # should greet you as hyperactt
+```
+
+Then run `bootstrap-droplet.sh` on the droplet to install Docker, add a swapfile, lock
+down the firewall, and clone every repo above into the right place with the right
+folder names (several of the GitHub repo names don't match the local folder names the
+compose file expects — the script handles the renames).
 
 Quick reference for the pieces that live only in this repo:
 

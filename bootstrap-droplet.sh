@@ -6,7 +6,10 @@
 # kong bootstrap, etc).
 set -euo pipefail
 
-: "${GITHUB_PAT:?Set GITHUB_PAT to a read-only PAT for the hyperactt-psm26 org first}"
+# Requires the droplet's SSH key to already be added to the hyperactt GitHub
+# account (which has access to every repo in the org) - see deploy/README.md.
+ssh -T git@github.com 2>&1 | grep -qi "successfully authenticated" \
+  || { echo "git@github.com SSH auth isn't working yet - set that up first (see README.md)" >&2; exit 1; }
 
 ORG="hyperactt-psm26"
 BASE_DIR="/opt/adamPSM"
@@ -16,7 +19,7 @@ clone() {
   if [ -d "$dest/.git" ]; then
     git -C "$dest" pull --ff-only
   else
-    git clone "https://${GITHUB_PAT}@github.com/${ORG}/${repo}.git" "$dest"
+    git clone "git@github.com:${ORG}/${repo}.git" "$dest"
   fi
 }
 

@@ -174,7 +174,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: hactt-frontend
     restart: unless-stopped
-    mem_limit: 300m
+    mem_limit: 900m
     environment:
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
       API_BASE_URL: "http://hactt-backend:8090"
@@ -200,7 +200,7 @@ services:
       context: ../hactt-backend
     container_name: hactt-backend
     restart: unless-stopped
-    mem_limit: 450m
+    mem_limit: 600m
     environment:
       JAVA_TOOL_OPTIONS: "-Xmx256m"
       SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/hactt"

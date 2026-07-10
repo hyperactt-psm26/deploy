@@ -8,8 +8,13 @@ set -euo pipefail
 
 # Requires the droplet's SSH key to already be added to the hyperactt GitHub
 # account (which has access to every repo in the org) - see deploy/README.md.
-ssh -T git@github.com 2>&1 | grep -qi "successfully authenticated" \
-  || { echo "git@github.com SSH auth isn't working yet - set that up first (see README.md)" >&2; exit 1; }
+# `ssh -T git@github.com` always exits non-zero (GitHub refuses shell access
+# even on successful auth), so capture its output first rather than checking
+# the pipeline's exit status directly - otherwise `pipefail` above trips this
+# check even when auth actually succeeded.
+github_auth_output="$(ssh -T git@github.com 2>&1 || true)"
+echo "$github_auth_output" | grep -qi "successfully authenticated" \
+  || { echo "git@github.com SSH auth isn't working yet - set that up first (see README.md)" >&2; echo "$github_auth_output" >&2; exit 1; }
 
 ORG="hyperactt-psm26"
 BASE_DIR="/opt/adamPSM"

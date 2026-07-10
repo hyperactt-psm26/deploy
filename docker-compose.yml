@@ -174,7 +174,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: hactt-frontend
     restart: unless-stopped
-    mem_limit: 900m
+    mem_limit: 1500m
     environment:
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
       API_BASE_URL: "http://hactt-backend:8090"
